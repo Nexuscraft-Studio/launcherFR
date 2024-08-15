@@ -6,10 +6,11 @@ const path = require('path')
 const logger = LoggerUtil.getLogger('ConfigManager')
 
 const sysRoot = process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Application Support' : process.env.HOME)
+// TODO change
+const dataPath = path.join(sysRoot, '.zone-delta')
 
-const dataPath = path.join(sysRoot, '.helioslauncher')
-
-const launcherDir = require('@electron/remote').app.getPath('userData')
+// Forked processes do not have access to electron, so we have this workaround.
+const launcherDir = process.env.CONFIG_DIRECT_PATH || require('@electron/remote').app.getPath('userData')
 
 /**
  * Retrieve the absolute path of the launcher directory.
@@ -43,30 +44,45 @@ const configPath = path.join(exports.getLauncherDirectory(), 'config.json')
 const configPathLEGACY = path.join(dataPath, 'config.json')
 const firstLaunch = !fs.existsSync(configPath) && !fs.existsSync(configPathLEGACY)
 
-exports.getAbsoluteMinRAM = function(ram){
-    if(ram?.minimum != null) {
-        return ram.minimum/1024
-    } else {
-        // Legacy behavior
-        const mem = os.totalmem()
-        return mem >= (6*1073741824) ? 3 : 2
-    }
-}
-
-exports.getAbsoluteMaxRAM = function(ram){
+exports.getAbsoluteMinRAM = function(){
     const mem = os.totalmem()
-    const gT16 = mem-(16*1073741824)
-    return Math.floor((mem-(gT16 > 0 ? (Number.parseInt(gT16/8) + (16*1073741824)/4) : mem/4))/1073741824)
+    return DistroManager.getDistribution() != null ? DistroManager.getDistribution().getServer(config.selectedServer).getMinRam() : 3;
 }
 
-function resolveSelectedRAM(ram) {
-    if(ram?.recommended != null) {
-        return `${ram.recommended}M`
-    } else {
-        // Legacy behavior
-        const mem = os.totalmem()
-        return mem >= (8*1073741824) ? '4G' : (mem >= (6*1073741824) ? '3G' : '2G')
+exports.getAbsoluteMaxRAM = function(){
+    const mem = os.totalmem()
+    const gT16 = mem-16000000000
+    return Math.floor((mem-1000000000-(gT16 > 0 ? (Number.parseInt(gT16/8) + 16000000000/4) : mem/4))/1000000000)
+}
+
+function resolveMaxRAM(){
+    const mem = os.totalmem()
+    return mem >= 8000000000 ? '4G' : (mem >= 6000000000 ? '3G' : '2G')
+}
+
+function resolveMinRAM(){
+    return resolveMaxRAM()
+}
+
+/**
+ * TODO Copy pasted, should be in a utility file.
+ * 
+ * Returns true if the actual version is greater than
+ * or equal to the desired version.
+ * 
+ * @param {string} desired The desired version.
+ * @param {string} actual The actual version.
+ */
+function mcVersionAtLeast(desired, actual){
+    const des = desired.split('.')
+    const act = actual.split('.')
+
+    for(let i=0; i<des.length; i++){
+        if(!(parseInt(act[i]) >= parseInt(des[i]))){
+            return false
+        }
     }
+    return true
 }
 
 /**
@@ -321,85 +337,35 @@ exports.getAuthAccount = function(uuid){
  * 
  * @returns {Object} The authenticated account object created by this action.
  */
-exports.updateMojangAuthAccount = function(uuid, accessToken){
+exports.updateAzAuthAccount = function(uuid, accessToken){
     config.authenticationDatabase[uuid].accessToken = accessToken
-    config.authenticationDatabase[uuid].type = 'mojang' // For gradual conversion.
+    config.authenticationDatabase[uuid].type = 'azAuth' // For gradual conversion.
     return config.authenticationDatabase[uuid]
 }
 
 /**
- * Adds an authenticated mojang account to the database to be stored.
+ * Adds an authenticated azuriom account to the database to be stored.
  * 
- * @param {string} uuid The uuid of the authenticated account.
- * @param {string} accessToken The accessToken of the authenticated account.
- * @param {string} username The username (usually email) of the authenticated account.
- * @param {string} displayName The in game name of the authenticated account.
+ * @param {Object} result The result of the connection.
  * 
  * @returns {Object} The authenticated account object created by this action.
  */
-exports.addMojangAuthAccount = function(uuid, accessToken, username, displayName){
+exports.addAzAuthAccount = function(result) {
+    config.selectedAccount = result.uuid
+    config.authenticationDatabase[result.uuid] = result
+    return config.authenticationDatabase[result.uuid]
+}
+/**exports.addAzAuthAccount = function(uuid, accessToken, username, roleid) {
     config.selectedAccount = uuid
     config.authenticationDatabase[uuid] = {
-        type: 'mojang',
-        accessToken,
+        type: 'azAuth',
+        accessToken: accessToken,
         username: username.trim(),
-        uuid: uuid.trim(),
-        displayName: displayName.trim()
+        uuid: uuid.toString(),
+        roleid: roleid
     }
     return config.authenticationDatabase[uuid]
-}
-
-/**
- * Update the tokens of an authenticated microsoft account.
- * 
- * @param {string} uuid The uuid of the authenticated account.
- * @param {string} accessToken The new Access Token.
- * @param {string} msAccessToken The new Microsoft Access Token
- * @param {string} msRefreshToken The new Microsoft Refresh Token
- * @param {date} msExpires The date when the microsoft access token expires
- * @param {date} mcExpires The date when the mojang access token expires
- * 
- * @returns {Object} The authenticated account object created by this action.
- */
-exports.updateMicrosoftAuthAccount = function(uuid, accessToken, msAccessToken, msRefreshToken, msExpires, mcExpires) {
-    config.authenticationDatabase[uuid].accessToken = accessToken
-    config.authenticationDatabase[uuid].expiresAt = mcExpires
-    config.authenticationDatabase[uuid].microsoft.access_token = msAccessToken
-    config.authenticationDatabase[uuid].microsoft.refresh_token = msRefreshToken
-    config.authenticationDatabase[uuid].microsoft.expires_at = msExpires
-    return config.authenticationDatabase[uuid]
-}
-
-/**
- * Adds an authenticated microsoft account to the database to be stored.
- * 
- * @param {string} uuid The uuid of the authenticated account.
- * @param {string} accessToken The accessToken of the authenticated account.
- * @param {string} name The in game name of the authenticated account.
- * @param {date} mcExpires The date when the mojang access token expires
- * @param {string} msAccessToken The microsoft access token
- * @param {string} msRefreshToken The microsoft refresh token
- * @param {date} msExpires The date when the microsoft access token expires
- * 
- * @returns {Object} The authenticated account object created by this action.
- */
-exports.addMicrosoftAuthAccount = function(uuid, accessToken, name, mcExpires, msAccessToken, msRefreshToken, msExpires) {
-    config.selectedAccount = uuid
-    config.authenticationDatabase[uuid] = {
-        type: 'microsoft',
-        accessToken,
-        username: name.trim(),
-        uuid: uuid.trim(),
-        displayName: name.trim(),
-        expiresAt: mcExpires,
-        microsoft: {
-            access_token: msAccessToken,
-            refresh_token: msRefreshToken,
-            expires_at: msExpires
-        }
-    }
-    return config.authenticationDatabase[uuid]
-}
+}*/
 
 /**
  * Remove an authenticated account from the database. If the account
@@ -507,18 +473,18 @@ exports.setModConfiguration = function(serverid, configuration){
 
 // Java Settings
 
-function defaultJavaConfig(effectiveJavaOptions, ram) {
-    if(effectiveJavaOptions.suggestedMajor > 8) {
-        return defaultJavaConfig17(ram)
+function defaultJavaConfig(mcVersion) {
+    if(mcVersionAtLeast('1.17', mcVersion)) {
+        return defaultJavaConfig117()
     } else {
-        return defaultJavaConfig8(ram)
+        return defaultJavaConfigBelow117()
     }
 }
 
-function defaultJavaConfig8(ram) {
+function defaultJavaConfigBelow117() {
     return {
-        minRAM: resolveSelectedRAM(ram),
-        maxRAM: resolveSelectedRAM(ram),
+        minRAM: resolveMinRAM(),
+        maxRAM: resolveMaxRAM(), // Dynamic
         executable: null,
         jvmOptions: [
             '-XX:+UseConcMarkSweepGC',
@@ -529,10 +495,10 @@ function defaultJavaConfig8(ram) {
     }
 }
 
-function defaultJavaConfig17(ram) {
+function defaultJavaConfig117() {
     return {
-        minRAM: resolveSelectedRAM(ram),
-        maxRAM: resolveSelectedRAM(ram),
+        minRAM: resolveMinRAM(),
+        maxRAM: resolveMaxRAM(), // Dynamic
         executable: null,
         jvmOptions: [
             '-XX:+UnlockExperimentalVMOptions',
@@ -551,9 +517,9 @@ function defaultJavaConfig17(ram) {
  * @param {string} serverid The server id.
  * @param {*} mcVersion The minecraft version of the server.
  */
-exports.ensureJavaConfig = function(serverid, effectiveJavaOptions, ram) {
+exports.ensureJavaConfig = function(serverid, mcVersion) {
     if(!Object.prototype.hasOwnProperty.call(config.javaConfig, serverid)) {
-        config.javaConfig[serverid] = defaultJavaConfig(effectiveJavaOptions, ram)
+        config.javaConfig[serverid] = defaultJavaConfig(mcVersion)
     }
 }
 
@@ -565,7 +531,7 @@ exports.ensureJavaConfig = function(serverid, effectiveJavaOptions, ram) {
  * @param {string} serverid The server id.
  * @returns {string} The minimum amount of memory for JVM initialization.
  */
-exports.getMinRAM = function(serverid){
+exports.getMinRAM = function(serverid) {
     return config.javaConfig[serverid].minRAM
 }
 

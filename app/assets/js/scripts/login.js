@@ -2,21 +2,25 @@
  * Script for login.ejs
  */
 // Validation Regexes.
-const validUsername         = /^[a-zA-Z0-9_]{1,16}$/
-const basicEmail            = /^\S+@\S+\.\S+$/
+const validUsername = /^[a-zA-Z0-9_]{1,16}$/
+const basicEmail = /^\S+@\S+\.\S+$/
 //const validEmail          = /^(([^<>()\[\]\.,;:\s@\"]+(\.[^<>()\[\]\.,;:\s@\"]+)*)|(\".+\"))@(([^<>()[\]\.,;:\s@\"]+\.)+[^<>()[\]\.,;:\s@\"]{2,})$/i
 
 // Login Elements
-const loginCancelContainer  = document.getElementById('loginCancelContainer')
-const loginCancelButton     = document.getElementById('loginCancelButton')
-const loginEmailError       = document.getElementById('loginEmailError')
-const loginUsername         = document.getElementById('loginUsername')
-const loginPasswordError    = document.getElementById('loginPasswordError')
-const loginPassword         = document.getElementById('loginPassword')
-const checkmarkContainer    = document.getElementById('checkmarkContainer')
-const loginRememberOption   = document.getElementById('loginRememberOption')
-const loginButton           = document.getElementById('loginButton')
-const loginForm             = document.getElementById('loginForm')
+const { isDisplayableError } = require('helios-core/common')
+const loginCancelContainer = document.getElementById('loginCancelContainer')
+const loginCancelButton = document.getElementById('loginCancelButton')
+const loginEmailError = document.getElementById('loginEmailError')
+const loginEmail = document.getElementById('loginEmail')
+const loginPasswordError = document.getElementById('loginPasswordError')
+const loginPassword = document.getElementById('loginPassword')
+const loginA2FError = document.getElementById('loginA2FError')
+const loginA2F = document.getElementById('loginA2F')
+const loginA2Fcontainer = document.getElementById('login2FAcontainer')
+const checkmarkContainer = document.getElementById('checkmarkContainer')
+const loginRememberOption = document.getElementById('loginRememberOption')
+const loginButton = document.getElementById('loginButton')
+const loginForm = document.getElementById('loginForm')
 
 // Control variables.
 let lu = false, lp = false
@@ -28,7 +32,7 @@ let lu = false, lp = false
  * @param {HTMLElement} element The element on which to display the error.
  * @param {string} value The error text.
  */
-function showError(element, value){
+function showError(element, value) {
     element.innerHTML = value
     element.style.opacity = 1
 }
@@ -38,8 +42,8 @@ function showError(element, value){
  * 
  * @param {HTMLElement} element The element to shake.
  */
-function shakeError(element){
-    if(element.style.opacity == 1){
+function shakeError(element) {
+    if (element.style.opacity == 1) {
         element.classList.remove('shake')
         void element.offsetWidth
         element.classList.add('shake')
@@ -51,16 +55,16 @@ function shakeError(element){
  * 
  * @param {string} value The email value.
  */
-function validateEmail(value){
-    if(value){
-        if(!basicEmail.test(value) && !validUsername.test(value)){
+function validateEmail(value) {
+    if (value) {
+        if (!basicEmail.test(value) && !validUsername.test(value)) {
             showError(loginEmailError, Lang.queryJS('login.error.invalidValue'))
             loginDisabled(true)
             lu = false
         } else {
             loginEmailError.style.opacity = 0
             lu = true
-            if(lp){
+            if (lp) {
                 loginDisabled(false)
             }
         }
@@ -76,11 +80,11 @@ function validateEmail(value){
  * 
  * @param {string} value The password value.
  */
-function validatePassword(value){
-    if(value){
+function validatePassword(value) {
+    if (value) {
         loginPasswordError.style.opacity = 0
         lp = true
-        if(lu){
+        if (lu) {
             loginDisabled(false)
         }
     } else {
@@ -91,7 +95,7 @@ function validatePassword(value){
 }
 
 // Emphasize errors with shake when focus is lost.
-loginUsername.addEventListener('focusout', (e) => {
+loginEmail.addEventListener('focusout', (e) => {
     validateEmail(e.target.value)
     shakeError(loginEmailError)
 })
@@ -101,7 +105,7 @@ loginPassword.addEventListener('focusout', (e) => {
 })
 
 // Validate input for each field.
-loginUsername.addEventListener('input', (e) => {
+loginEmail.addEventListener('input', (e) => {
     validateEmail(e.target.value)
 })
 loginPassword.addEventListener('input', (e) => {
@@ -113,8 +117,8 @@ loginPassword.addEventListener('input', (e) => {
  * 
  * @param {boolean} v True to enable, false to disable.
  */
-function loginDisabled(v){
-    if(loginButton.disabled !== v){
+function loginDisabled(v) {
+    if (loginButton.disabled !== v) {
         loginButton.disabled = v
     }
 }
@@ -124,8 +128,8 @@ function loginDisabled(v){
  * 
  * @param {boolean} v True to enable, false to disable.
  */
-function loginLoading(v){
-    if(v){
+function loginLoading(v) {
+    if (v) {
         loginButton.setAttribute('loading', v)
         loginButton.innerHTML = loginButton.innerHTML.replace(Lang.queryJS('login.login'), Lang.queryJS('login.loggingIn'))
     } else {
@@ -139,12 +143,12 @@ function loginLoading(v){
  * 
  * @param {boolean} v True to enable, false to disable.
  */
-function formDisabled(v){
+function formDisabled(v) {
     loginDisabled(v)
     loginCancelButton.disabled = v
-    loginUsername.disabled = v
+    loginEmail.disabled = v
     loginPassword.disabled = v
-    if(v){
+    if (v) {
         checkmarkContainer.setAttribute('disabled', v)
     } else {
         checkmarkContainer.removeAttribute('disabled')
@@ -156,8 +160,8 @@ let loginViewOnSuccess = VIEWS.landing
 let loginViewOnCancel = VIEWS.settings
 let loginViewCancelHandler
 
-function loginCancelEnabled(val){
-    if(val){
+function loginCancelEnabled(val) {
+    if (val) {
         $(loginCancelContainer).show()
     } else {
         $(loginCancelContainer).hide()
@@ -166,14 +170,23 @@ function loginCancelEnabled(val){
 
 loginCancelButton.onclick = (e) => {
     switchView(getCurrentView(), loginViewOnCancel, 500, 500, () => {
-        loginUsername.value = ''
+        loginEmail.value = ''
         loginPassword.value = ''
         loginCancelEnabled(false)
-        if(loginViewCancelHandler != null){
+        if (loginViewCancelHandler != null) {
             loginViewCancelHandler()
             loginViewCancelHandler = null
         }
     })
+}
+
+loginA2F.oninput = (e) => {
+    if (loginA2F.value != undefined && loginA2F.value != null && loginA2F.value.length === 6) {
+        formDisabled(true)
+        // Show loading stuff.
+        loginLoading(true)
+        login(loginEmail.value, loginPassword.value, loginA2F.value)
+    }
 }
 
 // Disable default form behavior.
@@ -181,28 +194,36 @@ loginForm.onsubmit = () => { return false }
 
 // Bind login button behavior.
 loginButton.addEventListener('click', () => {
-    // Disable form.
     formDisabled(true)
 
     // Show loading stuff.
     loginLoading(true)
 
-    AuthManager.addMojangAccount(loginUsername.value, loginPassword.value).then((value) => {
+    login(loginEmail.value, loginPassword.value, loginA2F.value == undefined || loginA2F.valu === "" ? null : loginA2F.value)
+})
+
+function login(email, password, a2f) {
+    AuthManager.addMojangAccount(email, password, a2f).then((value) => {
+        if (value.needA2F === true) {
+            loginA2Fcontainer.style.removeProperty('display')
+            return
+        }
         updateSelectedAccount(value)
         loginButton.innerHTML = loginButton.innerHTML.replace(Lang.queryJS('login.loggingIn'), Lang.queryJS('login.success'))
         $('.circle-loader').toggleClass('load-complete')
         $('.checkmark').toggle()
         setTimeout(() => {
-            switchView(VIEWS.login, loginViewOnSuccess, 500, 500, async () => {
+            switchView(VIEWS.login, loginViewOnSuccess, 500, 500, () => {
                 // Temporary workaround
-                if(loginViewOnSuccess === VIEWS.settings){
-                    await prepareSettings()
+                if (loginViewOnSuccess === VIEWS.settings) {
+                    prepareSettings()
                 }
                 loginViewOnSuccess = VIEWS.landing // Reset this for good measure.
                 loginCancelEnabled(false) // Reset this for good measure.
                 loginViewCancelHandler = null // Reset this for good measure.
-                loginUsername.value = ''
+                loginEmail.value = ''
                 loginPassword.value = ''
+                loginA2F.value = ''
                 $('.circle-loader').toggleClass('load-complete')
                 $('.checkmark').toggle()
                 loginLoading(false)
@@ -212,15 +233,26 @@ loginButton.addEventListener('click', () => {
         }, 1000)
     }).catch((displayableError) => {
         loginLoading(false)
+        formDisabled(false)
 
         let actualDisplayableError
-        if(isDisplayableError(displayableError)) {
-            msftLoginLogger.error('Error while logging in.', displayableError)
+        if (isDisplayableError(displayableError)) {
+            console.log('Error while logging in.', displayableError)
             actualDisplayableError = displayableError
         } else {
             // Uh oh.
-            msftLoginLogger.error('Unhandled error during login.', displayableError)
-            actualDisplayableError = Lang.queryJS('login.error.unknown')
+            console.log('Unhandled error during login.', displayableError)
+            actualDisplayableError = {
+                title: 'Erreur inconnue pendant la connexion',
+                desc: 'Une erreur inconnue s\'est produite. Veuillez consulter la console pour plus de détails.'
+            }
+        }
+        
+        if(displayableError.reason == 'invalid_credentials') {
+            actualDisplayableError = {
+                title: 'Identifiants invalides',
+                desc: 'Veuillez vérifier vos identifiants et réessayer.'
+            }
         }
 
         setOverlayContent(actualDisplayableError.title, actualDisplayableError.desc, Lang.queryJS('login.tryAgain'))
@@ -230,5 +262,4 @@ loginButton.addEventListener('click', () => {
         })
         toggleOverlay(true)
     })
-
-})
+}
